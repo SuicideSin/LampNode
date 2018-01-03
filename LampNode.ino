@@ -84,7 +84,7 @@ unsigned int pulse[30][3];
 enum Modes {COLOUR, TWINKLE, RAINBOW, CYCLE};   // various modes of operation
 bool standby = false;
 
-enum Modes Mode = TWINKLE;
+enum Modes Mode = COLOUR;
 
 CRGB leds[PixelCount];
 
@@ -340,17 +340,15 @@ void twinkle()
   // here we need to cycle through each led, assigning consectuve colours pulled from the Wheel function. Each time this is called all colours should shift one
   int red, green, blue;
   int offset = random(30) - 15;
-  int pix = random(60);
+  int pix = random(PixelCount);
   int state = coinFlip();
   int val = rgb2wheel(target_colour[0],target_colour[1],target_colour[2]);
   Wheel(val+offset, &red, &green, &blue); // get our colour
-  CRGB colour(green,red,blue);
-  CRGB off(0,0,0);
 
   if(state)
-    leds[pix] = colour;
+    leds[pix].setRGB(red, green, blue);
   else
-    leds[pix] = off;
+    leds[pix].setRGB(0, 0, 0);
 
   FastLED.show();
 }
@@ -656,11 +654,11 @@ void loop()
   if (!standby)
   {
     /* Periodically update the brightness */
-    if(timerExpired(brightnessTimer, BRIGHTNESS_UPDATE_TIMEOUT))
-    {
-      setTimer(&brightnessTimer); // reset timer
-      set_brightness();
-    }
+    /* if(timerExpired(brightnessTimer, BRIGHTNESS_UPDATE_TIMEOUT)) */
+    /* { */
+    /*   setTimer(&brightnessTimer); // reset timer */
+    /*   set_brightness(); */
+    /* } */
 
     switch (Mode)
     {
@@ -712,6 +710,7 @@ void loop()
     // do nothing if off
     //applyColour(0,0,0);
   }
+  return;
 
   /* Periodically read the inputs */
   if (timerExpired(readInputTimer, INPUT_READ_TIMEOUT)) // check for button press periodically
