@@ -13,22 +13,12 @@
 #include <WiFiUdp.h>
 #include <DNSServer.h>
 #include <ESP8266WebServer.h>
-#include <ArduinoOTA.h>
-#include <EEPROM.h>
 #include <WiFiManager.h>
 #include <config.h> // this stores the private variables such as wifi ssid and password etc.
-#include <NeoPixelBrightnessBus.h> // instead of NeoPixelBus.h
+#include <FastLED.h>
 #include <stdio.h>
 #include <string.h>
 
-
-/* EEPROM memory map */
-#define MEM_RED         0
-#define MEM_GREEN       1
-#define MEM_BLUE        2
-#define MEM_MODE        3
-#define MEM_STANDBY     4
-#define MEM_BRIGHTNESS  5
 
 #define MAX_BRIGHTNESS 153 // ~60%
 
@@ -68,7 +58,6 @@ unsigned long runTime         = 0,
 long buttonTime = 0;
 long lastPushed = 0; // stores the time when button was last depressed
 long lastCheck = 0;  // stores the time when last checked for a button press
-char msg[50];        // message buffer
 
 // Flags
 bool button_pressed = false; // true if a button press has been registered
@@ -83,8 +72,9 @@ bool active = false;
 bool lastActive = false;
 bool overheating = false;
 
-const uint16_t PixelCount = 60; // this example assumes 3 pixels, making it smaller will cause a failure
-const uint8_t PixelPin = 14;  // make sure to set this to the correct pin, ignored for Esp8266
+const uint16_t PixelCount    = 16;
+const uint8_t  PixelDataPin  = 0;
+const uint8_t  PixelClockPin = 2;
 
 unsigned int target_colour[3] = {0,0,0}; // rgb value that LEDs are currently set to
 unsigned int current_colour[3] = {0,0,0};  // rgb value which we aim to set the LEDs to
@@ -94,11 +84,11 @@ unsigned int pulse[30][3];
 enum Modes {COLOUR, TWINKLE, RAINBOW, CYCLE};   // various modes of operation
 bool standby = false;
 
-enum Modes Mode;
+enum Modes Mode = TWINKLE;
 
-NeoPixelBrightnessBus<NeoRgbFeature, Neo800KbpsMethod> strip(PixelCount, PixelPin);
+CRGB leds[PixelCount];
 
-RgbColor genericColour(0,255,0);
+CRGB genericColour(0,255,0);
 
 void reconnect() {
   // Loop until we're reconnected
@@ -148,12 +138,11 @@ void applyColour(uint8_t r, uint8_t g, uint8_t b)
 {
   if (r < 256 && g < 256 && b < 256)
   {
-    RgbColor colour(g,r,b);
     for (uint8_t i=0; i<PixelCount; i++)
     {
-      strip.SetPixelColor(i, colour);
+      leds[i].setRGB(r,g,b);
     }
-    strip.Show();
+    FastLED.show();
     Serial.print("Whole strip set to ");
     Serial.print(r);
     Serial.print(",");
@@ -163,20 +152,6 @@ void applyColour(uint8_t r, uint8_t g, uint8_t b)
   }
   else
     Serial.println("Invalid RGB value, colour not set");
-}
-
-void music2Brightness(void)
-{
-  static int ADCval, lastADCval, brightness = 0 ;
-  ADCval = analogRead(A0);
-  if (ADCval != lastADCval)
-  {
-    Serial.print("ADC: ");
-    Serial.println(ADCval);
-    brightness = map(ADCval, 0, 1023, 0, 255);
-    strip.SetBrightness(brightness);
-    lastADCval = ADCval;
-  }
 }
 
 /* pass this function a pointer to an unsigned long to store the start time for the timer */
@@ -195,66 +170,6 @@ bool timerExpired(unsigned long startTime, unsigned long expiryTime)
     return true;
   else
     return false;
-}
-
-void writeEEPROM(int address, int val)
-{
-  if ((address < 512) && (address >=0)) // make sure we are in range
-  {
-    EEPROM.write(address, val);
-    EEPROM.commit();
-  }
-  else
-  {
-    Serial.print("Invalid EEPROM write address: ");
-    Serial.println(address);
-  }
-}
-
-int readEEPROM(int address)
-{
-  if ((address < 512) && (address >=0)) // make sure we are in range
-  {
-    int val;
-    val = EEPROM.read(address);
-    return val;
-  }
-  else
-  {
-    Serial.print("Invalid EEPROM read address: ");
-    Serial.println(address);
-  }
-}
-
-/* gets the last saved RGB value from the eeprom and stores it in target_colour */
-void getColourFromMemory(void)
-{
-  for (int addr = MEM_RED; addr <= MEM_BLUE; addr++)
-  {
-    target_colour[addr] = readEEPROM(addr);
-
-    Serial.print("EEPROM read: ");
-    Serial.print("[");
-    Serial.print(addr);
-    Serial.print("] ");
-    Serial.println(target_colour[addr]);
-  }
-}
-
-/* stores the last RGB value from target_colour in the eeprom */
-void saveColourToMemory(void)
-{
-  Serial.println("Saving RGB value");
-  for (int addr = MEM_RED; addr <= MEM_BLUE; addr++)
-  {
-    writeEEPROM(addr, target_colour[addr]);
-
-    Serial.print("EEPROM write: ");
-    Serial.print("[");
-    Serial.print(addr);
-    Serial.print("] ");
-    Serial.println(target_colour[addr]);
-  }
 }
 
 void setColour(int r, int g, int b)
@@ -292,7 +207,6 @@ void setColourTarget(int r, int g, int b)
   target_colour[1] = g;
   target_colour[2] = b;
 
-  saveColourToMemory();
   setColourTransition();
 }
 
@@ -313,39 +227,6 @@ void generatePulse(void)
     */
   }
 }
-/*
-void pulseEffect(void)
-{
-  setColour(pulse[pulse_addr][0],pulse[pulse_addr][1],pulse[pulse_addr][2]);
-
-  if (pulse_addr>=29)
-    pulse_direction = 0;
-  if (pulse_addr<=0)
-    pulse_direction = 1;
-
-  if (pulse_direction)
-    pulse_addr++;
-  else
-    pulse_addr--;
-}
-*/
-void connectingAnimation(void)
-{
-  static int count = -4;
-  RgbColor colour(10,10,10);
-  RgbColor off(0,0,0);
-  for (int i=0; i<5; i++)
-    strip.SetPixelColor(count+i, colour);
-  strip.SetPixelColor(count-1, off);
-  //strip.SetBrightness(brightness);
-  strip.Show();
-  if(count>60)
-    count = 0;
-  else
-    count++;
-  delay(30);
-}
-
 
 // Input a value 0 to 255 to get a color value.
 // The colours are a transition r - g - b - back to r.
@@ -384,10 +265,9 @@ void rainbow(void)
   for (int i=0; i<PixelCount; i++)
   {
     Wheel(i*stepVal+offset, &red, &green, &blue); // get our colour
-    RgbColor colour(green,red,blue);
-    strip.SetPixelColor(i, colour);
+    leds[i].setRGB(red, green, blue);
   }
-  strip.Show();
+  FastLED.show();
 
   if (offset >= 255)
     offset = 0;
@@ -433,7 +313,6 @@ void setTheMode(Modes temp)
   }
 
   Mode = temp;
-  writeEEPROM(MEM_MODE, Mode);
 }
 
 void setStandby(bool state)
@@ -441,12 +320,10 @@ void setStandby(bool state)
   if (state)
   {
     applyColour(0,0,0);
-    writeEEPROM(MEM_STANDBY, 1);
   }
   else
   {
     setColourTarget(target_colour[0],target_colour[1],target_colour[2]);
-    writeEEPROM(MEM_STANDBY, 0);
   }
 
   standby = state;
@@ -467,15 +344,22 @@ void twinkle()
   int state = coinFlip();
   int val = rgb2wheel(target_colour[0],target_colour[1],target_colour[2]);
   Wheel(val+offset, &red, &green, &blue); // get our colour
-  RgbColor colour(green,red,blue);
-  RgbColor off(0,0,0);
+  CRGB colour(green,red,blue);
+  CRGB off(0,0,0);
 
   if(state)
-    strip.SetPixelColor(pix, colour);
+    leds[pix] = colour;
   else
-    strip.SetPixelColor(pix, off);
+    leds[pix] = off;
 
-  strip.Show();
+  FastLED.show();
+}
+
+void applyBrightness(uint8_t value) {
+  for (uint8_t i = 0; i < PixelCount; i++) {
+    leds[i].maximizeBrightness();
+    leds[i] %= value;
+  }
 }
 
 void set_brightness(void)
@@ -492,7 +376,7 @@ void set_brightness(void)
     Serial.print("pulse animation: ");
     Serial.println(brightness_pulse);
 
-    strip.SetBrightness(brightness_pulse);
+    applyBrightness(brightness_pulse);
 
     if (coefficient>=1.0)
       pulse_direction = 0;
@@ -506,7 +390,7 @@ void set_brightness(void)
 
     if (Mode == COLOUR)
     {
-      strip.Show();
+      FastLED.show();
     }
   }
   else
@@ -515,47 +399,21 @@ void set_brightness(void)
     {
       coefficient+=0.025;
       brightness_pulse = brightness * coefficient;
-      strip.SetBrightness(brightness_pulse);
+      applyBrightness(brightness_pulse);
     }
     else
     {
       if (last_brightness!=brightness)
       {
-        strip.SetBrightness(brightness);
+        applyBrightness(brightness);
         if (Mode == COLOUR)
         {
-          strip.Show();
+          FastLED.show();
         }
         last_brightness = brightness;
       }
     }
   }
-}
-
-void initOTA(void)
-{
-  ArduinoOTA.onStart([]() {
-    Serial.println("OTA Update Started");
-    setColour(0,0,0);
-  });
-  ArduinoOTA.onEnd([]() {
-    Serial.println("\nOTA Update Complete");
-    setColour(0,0,0);
-  });
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    strip.SetPixelColor((PixelCount*(progress / (total / 100)))/100, genericColour);
-    strip.Show();
-    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-  });
-  ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("Error[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-    else if (error == OTA_END_ERROR) Serial.println("End Failed");
-  });
-  ArduinoOTA.begin();
 }
 
 void fadeToColourTarget(void)
@@ -746,38 +604,11 @@ void callback(char* topic, byte* payload, unsigned int length)
     if (brightness_temp >= 0 || brightness_temp < 256)
       brightness = brightness_temp;
 
-    writeEEPROM(MEM_BRIGHTNESS,brightness);
     //if(Mode==COLOUR)
     //  applyColour(target_colour[0],target_colour[1],target_colour[2]);
   }
 }
 
-/*
-void setup_wifi()
-{
-  delay(10);
-
-  // We start by connecting to a WiFi network
-  Serial.println();
-  Serial.print("Connecting to ");
-  Serial.println(ssid);
-
-  WiFi.begin(ssid, password);
-
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    connectingAnimation();
-    Serial.print(".");
-  }
-
-  randomSeed(micros());
-
-  Serial.println("");
-  Serial.println("WiFi connected");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
-}
-*/
 
 void setup()
 {
@@ -789,10 +620,6 @@ void setup()
   /* Setup serial */
   Serial.begin(115200);
   Serial.flush();
-  /* swap serial port and then back again - seems to fix pixel update issue */
-  //Serial.swap();
-  //delay(200);
-  //Serial.swap();
 
   /* Start timers */
   setTimer(&readInputTimer);
@@ -803,39 +630,17 @@ void setup()
   setTimer(&rainbowTimer);
   setTimer(&cycleTimer);
 
-  /* Set LED state */
-  strip.Begin();
-  strip.Show();
+  /* Start FastLED */
+  FastLED.addLeds<LPD8806, PixelDataPin, PixelClockPin, RGB>(leds, PixelCount);
+  FastLED.show();
 
-  /* Setup WiFi and MQTT */
-  //setup_wifi();
-  //Local intialization. Once its business is done, there is no need to keep it around
+  /* Setup MQTT */
+  // Local intialization. Once its business is done, there is no need to keep it around
   WiFiManager wifiManager;
   wifiManager.autoConnect(deviceName);
 
   client.setServer(MQTTserver, MQTTport);
   client.setCallback(callback);
-
-  initOTA();
-
-  /* Initialise EEPROM */
-  EEPROM.begin(512);
-  getColourFromMemory();
-  setColourTarget(target_colour[0],target_colour[1],target_colour[2]);
-  setTheMode((Modes)readEEPROM(MEM_MODE));
-
-  if(readEEPROM(MEM_STANDBY)==0)
-  {
-    setStandby(false);
-    Serial.println("STANDBY FALSE");
-  }
-  else
-  {
-    setStandby(true);
-    Serial.println("STANDBY TRUE");
-  }
-
-  brightness = readEEPROM(MEM_BRIGHTNESS);
 }
 
 int cnt = 0;
@@ -845,7 +650,6 @@ void loop()
   if (!client.connected())
     reconnect();
   client.loop();
-  ArduinoOTA.handle();
 
   unsigned long now = millis();  // get elapsed time
 
@@ -908,27 +712,6 @@ void loop()
     // do nothing if off
     //applyColour(0,0,0);
   }
-
-    /* Periodically read the temp sensor */
-    /*
-  if (timerExpired(readTempTimer, TEMPERATURE_READ_TIMEOUT))
-  {
-    setTimer(&readTempTimer);  // reset timer
-    float voltage = analogRead(A0) * 5.0;
-          voltage /= 1024.0;
-    float temperature = (voltage - 0.5) * 100 ;  //converting from 10 mv per degree wit 500 mV offset to degrees ((voltage - 500mV) times 100)
-    Serial.print("Temp: ");
-    Serial.print(temperature);
-    Serial.println(" deg");
-    if ((temperature > 80) && (brightness > 100))
-    {
-      overheating = true;
-      brightness = 100; // limit brightness for safety
-    }
-    else
-      overheating = false;
-  }
-  */
 
   /* Periodically read the inputs */
   if (timerExpired(readInputTimer, INPUT_READ_TIMEOUT)) // check for button press periodically
