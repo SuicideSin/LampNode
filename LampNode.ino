@@ -37,14 +37,40 @@
 WiFiClient espClient;
 PubSubClient client(espClient);
 
-const char* deviceName          = "LampNode01";
-const char* MQTTtopic           = "LampNode01/#";
-const char* MQTTmode            = "LampNode01/Mode";
-const char* MQTTpower           = "LampNode01/Power";
-const char* MQTTcolour          = "LampNode01/Colour";
-const char* MQTTbrightness      = "LampNode01/Brightness";
-const char* MQTTannouncements   = "LampNode01/Announcements";
-const char* MQTTcomms           = "LampNode/Comms";
+const char* MQTTDeviceName       = "LampNode01";
+const char* MQTTDeviceInfoInbox  = "/inbox/LampNode01/deviceInfo";
+const char* MQTTDeviceInfoOutbox = "/outbox/LampNode01/deviceInfo";
+const char* MQTTPowerInbox       = "/inbox/LampNode01/Power";
+const char* MQTTPowerOutbox      = "/outbox/LampNode01/Power";
+const char* MQTTtopic            = "LampNode01/#";
+const char* MQTTmode             = "LampNode01/Mode";
+const char* MQTTcolour           = "LampNode01/Colour";
+const char* MQTTbrightness       = "LampNode01/Brightness";
+const char* MQTTannouncements    = "LampNode01/Announcements";
+const char* MQTTcomms            = "LampNode/Comms";
+
+const char* MQTTDeviceInfo = "                      \
+{                                                   \
+  \"deviceInfo\": {                                 \
+    \"name\": \"LampNode01\",                       \
+      \"endPoints\": {                              \
+        \"Power\": {                                \
+          \"title\": \"Power\",                     \
+          \"card-type\": \"crouton-simple-toggle\", \
+          \"labels\": {                             \
+            \"true\": \"On\",                       \
+            \"false\": \"Off\"                      \
+          },                                        \
+          \"values\": {                             \
+            \"value\": false                        \
+          },                                        \
+        }                                           \
+      },                                            \
+      \"description\": \"Magic Lamp\",              \
+      \"status\": \"good\"                          \
+  }                                                 \
+}                                                   \
+";
 
 unsigned long runTime         = 0,
               ledTimer        = 0,
@@ -96,14 +122,13 @@ void reconnect() {
   {
     Serial.print("Attempting MQTT connection... ");
     // Attempt to connect
-    if (client.connect(deviceName, MQTTuser, MQTTpassword))
+    if (client.connect(MQTTDeviceName, MQTTuser, MQTTpassword))
     {
       Serial.println("Connected");
-      // Once connected, publish an announcement...
-      //client.publish("/LampNode/Announcements", "LampNode01 connected");  // potentially not necessary
-      // ... and resubscribe
-      client.subscribe(MQTTtopic);
-      client.subscribe(MQTTcomms);  // listen for touch events (community topic)
+      // Once connected, publish device info
+      client.publish(MQTTDeviceInfoOutbox, MQTTDeviceInfo);
+      // And subscribe to topics
+      client.subscribe(MQTTDeviceInfoInbox);
     }
     else
     {
@@ -574,19 +599,19 @@ void callback(char* topic, byte* payload, unsigned int length)
       client.publish(MQTTcolour, hex);
 
       if (standby)
-        client.publish(MQTTpower, "Off");
+        client.publish(MQTTPowerOutbox, "{\"value\":false}");
       else
-        client.publish(MQTTpower, "On");
+        client.publish(MQTTPowerOutbox, "{\"value\":true}");
     }
   }
-  if (strcmp(topic, MQTTpower)==0)
+  if (strcmp(topic, MQTTPowerInbox)==0)
   {
-    if(strcmp(input,"On")==0)
+    if(strstr(input,"On")!=NULL)
     {
       setStandby(false);
       Serial.println("ON");
     }
-    if(strcmp(input,"Off")==0)
+    if(strstr(input,"Off")!=NULL)
     {
       setStandby(true);
       Serial.println("OFF");
@@ -604,6 +629,10 @@ void callback(char* topic, byte* payload, unsigned int length)
 
     //if(Mode==COLOUR)
     //  applyColour(target_colour[0],target_colour[1],target_colour[2]);
+  }
+  if (strcmp(topic, MQTTDeviceInfoInbox)==0) {
+    Serial.println("Broadcasting device info");
+    client.publish(MQTTDeviceInfoOutbox, MQTTDeviceInfo);
   }
 }
 
@@ -635,7 +664,7 @@ void setup()
   /* Setup MQTT */
   // Local intialization. Once its business is done, there is no need to keep it around
   WiFiManager wifiManager;
-  wifiManager.autoConnect(deviceName);
+  wifiManager.autoConnect(MQTTDeviceName);
 
   client.setServer(MQTTserver, MQTTport);
   client.setCallback(callback);
