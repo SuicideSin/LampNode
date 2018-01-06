@@ -14,11 +14,10 @@
 #include <DNSServer.h>
 #include <ESP8266WebServer.h>
 #include <WiFiManager.h>
-#include <config.h> // this stores the private variables such as wifi ssid and password etc.
 #include <FastLED.h>
 #include <stdio.h>
 #include <string.h>
-
+#include "config.h" // this stores the private variables such as wifi ssid and password etc.
 
 #define MAX_BRIGHTNESS 153 // ~60%
 
@@ -42,35 +41,15 @@ const char* MQTTDeviceInfoInbox  = "/inbox/LampNode01/deviceInfo";
 const char* MQTTDeviceInfoOutbox = "/outbox/LampNode01/deviceInfo";
 const char* MQTTPowerInbox       = "/inbox/LampNode01/Power";
 const char* MQTTPowerOutbox      = "/outbox/LampNode01/Power";
-const char* MQTTtopic            = "LampNode01/#";
-const char* MQTTmode             = "LampNode01/Mode";
-const char* MQTTcolour           = "LampNode01/Colour";
-const char* MQTTbrightness       = "LampNode01/Brightness";
-const char* MQTTannouncements    = "LampNode01/Announcements";
-const char* MQTTcomms            = "LampNode/Comms";
+const char* MQTTModeInbox        = "/inbox/LampNode01/Mode";
+const char* MQTTModeOutbox       = "/outbox/LampNode01/Mode";
+const char* MQTTColorInbox       = "/inbox/LampNode01/Color";
+const char* MQTTColorOutbox      = "/outbox/LampNode01/Color";
+const char* MQTTBrightnessInbox  = "/inbox/LampNode01/Brightness";
+const char* MQTTBrightnessOutbox = "/outbox/LampNode01/Brightness";
 
-const char* MQTTDeviceInfo = "                      \
-{                                                   \
-  \"deviceInfo\": {                                 \
-    \"name\": \"LampNode01\",                       \
-      \"endPoints\": {                              \
-        \"Power\": {                                \
-          \"title\": \"Power\",                     \
-          \"card-type\": \"crouton-simple-toggle\", \
-          \"labels\": {                             \
-            \"true\": \"On\",                       \
-            \"false\": \"Off\"                      \
-          },                                        \
-          \"values\": {                             \
-            \"value\": false                        \
-          },                                        \
-        }                                           \
-      },                                            \
-      \"description\": \"Magic Lamp\",              \
-      \"status\": \"good\"                          \
-  }                                                 \
-}                                                   \
-";
+// Make sure to update MQTT_MAX_PACKET_SIZE in PubSubClient.h so this monstrosity fits
+const char* MQTTDeviceInfo = "{\"deviceInfo\":{\"name\":\"LampNode01\",\"endPoints\":{\"Power\":{\"title\":\"Power\",\"card-type\":\"crouton-simple-toggle\",\"labels\":{\"true\":\"On\",\"false\":\"Off\"},\"values\":{\"value\":false}}},\"description\":\"MagicLamp\",\"status\":\"good\"}}";
 
 unsigned long runTime         = 0,
               ledTimer        = 0,
@@ -129,6 +108,10 @@ void reconnect() {
       client.publish(MQTTDeviceInfoOutbox, MQTTDeviceInfo);
       // And subscribe to topics
       client.subscribe(MQTTDeviceInfoInbox);
+      client.subscribe(MQTTPowerInbox);
+      client.subscribe(MQTTModeInbox);
+      client.subscribe(MQTTColorInbox);
+      client.subscribe(MQTTBrightnessInbox);
     }
     else
     {
@@ -470,9 +453,10 @@ void callback(char* topic, byte* payload, unsigned int length)
 
   Serial.println(input);
 
+  /*
   if (strcmp(topic, MQTTcolour)==0)
   {
-    /* ----- Split message by separator character and store rgb values ---- */
+    // ----- Split message by separator character and store rgb values ----
     char * command;
     int index = 0;
     int temp[3];
@@ -508,7 +492,6 @@ void callback(char* topic, byte* payload, unsigned int length)
     Serial.println(")");
     setColourTarget(temp[0],temp[1],temp[2]);
   }
-
   if (strcmp(topic, MQTTmode)==0)
   {
     Serial.print("Mode set to: ");
@@ -604,19 +587,6 @@ void callback(char* topic, byte* payload, unsigned int length)
         client.publish(MQTTPowerOutbox, "{\"value\":true}");
     }
   }
-  if (strcmp(topic, MQTTPowerInbox)==0)
-  {
-    if(strstr(input,"On")!=NULL)
-    {
-      setStandby(false);
-      Serial.println("ON");
-    }
-    if(strstr(input,"Off")!=NULL)
-    {
-      setStandby(true);
-      Serial.println("OFF");
-    }
-  }
   if (strcmp(topic, MQTTbrightness)==0)
   {
     int brightness_temp = atoi(input);
@@ -630,9 +600,18 @@ void callback(char* topic, byte* payload, unsigned int length)
     //if(Mode==COLOUR)
     //  applyColour(target_colour[0],target_colour[1],target_colour[2]);
   }
-  if (strcmp(topic, MQTTDeviceInfoInbox)==0) {
+  */
+  if (strcmp(topic, MQTTDeviceInfoInbox) == 0) {
     Serial.println("Broadcasting device info");
     client.publish(MQTTDeviceInfoOutbox, MQTTDeviceInfo);
+  } else if (strcmp(topic, MQTTPowerInbox) == 0) {
+    if (strstr(input,"true") != NULL) {
+      setStandby(false);
+      Serial.println("ON");
+    } else if (strstr(input,"false") != NULL) {
+      setStandby(true);
+      Serial.println("OFF");
+    }
   }
 }
 
@@ -759,8 +738,10 @@ void loop()
     if (((now - lastPushed) > 1000) && button_short_press) //check the hold time
     {
       Serial.println("Button held...");
+      /*
       if (!standby)
         client.publish(MQTTcomms, "Press");
+        */
       button_short_press = false;
     }
 
@@ -777,8 +758,10 @@ void loop()
       else  // for a long press we do the animation thing
       {
         Serial.println("Button released (long press).");
+        /*
         if (!standby)  // lets only do the pulsey animation if the lamp is on in the first place
           client.publish(MQTTcomms, "Release");
+          */
       }
       button_released = false;
       button_short_press = false;
