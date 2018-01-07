@@ -64,7 +64,7 @@ const char* MQTTDeviceInfo =
             "\"false\": \"Off\""
           "},"
           "\"values\": {"
-            "\"value\": false"
+            "\"value\": true"
           "}"
         "},"
         "\"Mode\": {"
@@ -82,6 +82,25 @@ const char* MQTTDeviceInfo =
           "\"card-type\": \"crouton-simple-text\","
           "\"values\": {"
             "\"value\": \"None\""
+          "}"
+        "},"
+        "\"Color\": {"
+          "\"card-type\": \"crouton-rgb-slider\","
+          "\"min\": 0,"
+          "\"max\": 255,"
+          "\"values\": {"
+            "\"red\": 0,"
+            "\"green\": 0,"
+            "\"blue\": 0"
+          "}"
+        "},"
+        "\"Brightness\": {"
+          "\"title\": \"Brightness\","
+          "\"card-type\": \"crouton-simple-slider\","
+          "\"min\": 0,"
+          "\"max\": 255,"
+          "\"values\": {"
+            "\"value\": 3"
           "}"
         "}"
       "},"
@@ -191,12 +210,12 @@ void applyColour(uint8_t r, uint8_t g, uint8_t b)
       leds[i].setRGB(r,g,b);
     }
     FastLED.show();
-    Serial.print("Whole strip set to ");
-    Serial.print(r);
-    Serial.print(",");
-    Serial.print(g);
-    Serial.print(",");
-    Serial.println(b);
+    // Serial.print("Whole strip set to ");
+    // Serial.print(r);
+    // Serial.print(",");
+    // Serial.print(g);
+    // Serial.print(",");
+    // Serial.println(b);
   }
   else
     Serial.println("Invalid RGB value, colour not set");
@@ -367,15 +386,13 @@ void setTheMode(Modes temp)
   Mode = temp;
 }
 
-void setStandby(bool state)
-{
-  if (state)
-  {
+void setStandby(bool state) {
+  if (state) {
     applyColour(0,0,0);
-  }
-  else
-  {
+    client.publish(MQTTPowerOutbox, "{\"value\":false}");
+  } else {
     setColourTarget(target_colour[0],target_colour[1],target_colour[2]);
+    client.publish(MQTTPowerOutbox, "{\"value\":true}");
   }
 
   standby = state;
@@ -633,6 +650,36 @@ void callback(char* topic, byte* payload, unsigned int length)
   } else if (strcmp(topic, MQTTModeInbox) == 0) {
     // go to the next mode
     setTheMode((Modes)((Mode + 1) % ModeCount));
+  } else if (strcmp(topic, MQTTColorInbox) == 0) {
+    // update looks like {"blue":65}
+    unsigned int tempColor;
+    char * command = strtok(input, "{\":");
+    Serial.print(command);
+    if (command != NULL) {
+      tempColor = atoi(strtok(NULL, "{\":"));
+      Serial.print(tempColor);
+    }
+    if (command == "red") {
+      setColourTarget(tempColor, target_colour[1], target_colour[2]);
+    } else if (command == "green") {
+      setColourTarget(target_colour[0], tempColor, target_colour[2]);
+    } else if (command == "blue") {
+      setColourTarget(target_colour[0], target_colour[1], tempColor);
+    }
+    /* setColourTarget(temp[0],temp[1],temp[2]); */
+  } else if (strcmp(topic, MQTTBrightnessInbox) == 0) {
+    /*
+    int brightness_temp = atoi(input);
+    brightness_temp*=MAX_BRIGHTNESS; // multiply by range
+    brightness_temp/=100;  // divide by 100
+    Serial.print("Brightness: ");
+    Serial.print(brightness_temp);
+    if (brightness_temp >= 0 || brightness_temp < 256)
+      brightness = brightness_temp;
+      */
+
+    //if(Mode==COLOUR)
+    //  applyColour(target_colour[0],target_colour[1],target_colour[2]);
   }
 }
 
