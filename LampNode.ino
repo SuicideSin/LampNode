@@ -19,6 +19,8 @@
 #include <string.h>
 #include "config.h" // this stores the private variables such as wifi ssid and password etc.
 
+#define DEVICE_INFO \
+
 #define MAX_BRIGHTNESS 153 // ~60%
 
 /* Physical connections */
@@ -42,14 +44,51 @@ const char* MQTTDeviceInfoOutbox = "/outbox/LampNode01/deviceInfo";
 const char* MQTTPowerInbox       = "/inbox/LampNode01/Power";
 const char* MQTTPowerOutbox      = "/outbox/LampNode01/Power";
 const char* MQTTModeInbox        = "/inbox/LampNode01/Mode";
-const char* MQTTModeOutbox       = "/outbox/LampNode01/Mode";
+const char* MQTTModeOutbox       = "/outbox/LampNode01/ModeSelection";
 const char* MQTTColorInbox       = "/inbox/LampNode01/Color";
 const char* MQTTColorOutbox      = "/outbox/LampNode01/Color";
 const char* MQTTBrightnessInbox  = "/inbox/LampNode01/Brightness";
 const char* MQTTBrightnessOutbox = "/outbox/LampNode01/Brightness";
 
 // Make sure to update MQTT_MAX_PACKET_SIZE in PubSubClient.h so this monstrosity fits
-const char* MQTTDeviceInfo = "{\"deviceInfo\":{\"name\":\"LampNode01\",\"endPoints\":{\"Power\":{\"title\":\"Power\",\"card-type\":\"crouton-simple-toggle\",\"labels\":{\"true\":\"On\",\"false\":\"Off\"},\"values\":{\"value\":false}}},\"description\":\"MagicLamp\",\"status\":\"good\"}}";
+const char* MQTTDeviceInfo =
+  "{"
+    "\"deviceInfo\": {"
+      "\"name\": \"LampNode01\","
+      "\"endPoints\": {"
+        "\"Power\": {"
+          "\"title\": \"Power\","
+          "\"card-type\": \"crouton-simple-toggle\","
+          "\"labels\": {"
+            "\"true\": \"On\","
+            "\"false\": \"Off\""
+          "},"
+          "\"values\": {"
+            "\"value\": false"
+          "}"
+        "},"
+        "\"Mode\": {"
+          "\"title\": \"Change Mode\","
+          "\"card-type\": \"crouton-simple-button\","
+          "\"values\": {"
+            "\"value\": true"
+          "},"
+          "\"icons\": {"
+            "\"icon\": \"circle\""
+          "}"
+        "},"
+        "\"ModeSelection\": {"
+          "\"title\": \"Selected Mode\","
+          "\"card-type\": \"crouton-simple-text\","
+          "\"values\": {"
+            "\"value\": \"None\""
+          "}"
+        "}"
+      "},"
+      "\"description\": \"MagicLamp\","
+      "\"status\": \"good\""
+    "}"
+  "}";
 
 unsigned long runTime         = 0,
               ledTimer        = 0,
@@ -87,6 +126,7 @@ unsigned int transition[50][3];
 unsigned int pulse[30][3];
 
 enum Modes {COLOUR, TWINKLE, RAINBOW, CYCLE};   // various modes of operation
+const uint8_t ModeCount = 4;
 bool standby = false;
 
 enum Modes Mode = COLOUR;
@@ -299,19 +339,23 @@ void setTheMode(Modes temp)
   switch(temp)
   {
     case COLOUR:
-    if(!standby)
-      setColourTarget(target_colour[0],target_colour[1],target_colour[2]);
+      client.publish(MQTTModeOutbox, "{\"value\":\"Color\"}");
+      if(!standby)
+        setColourTarget(target_colour[0],target_colour[1],target_colour[2]);
     break;
 
     case TWINKLE:
+      client.publish(MQTTModeOutbox, "{\"value\":\"Twinkle\"}");
       setColour(0,0,0);
     break;
 
     case RAINBOW:
+      client.publish(MQTTModeOutbox, "{\"value\":\"Rainbow\"}");
       setColour(0,0,0);
     break;
 
     case CYCLE:
+      client.publish(MQTTModeOutbox, "{\"value\":\"Cycle\"}");
       setColour(0,0,0);
     break;
 
@@ -492,32 +536,6 @@ void callback(char* topic, byte* payload, unsigned int length)
     Serial.println(")");
     setColourTarget(temp[0],temp[1],temp[2]);
   }
-  if (strcmp(topic, MQTTmode)==0)
-  {
-    Serial.print("Mode set to: ");
-
-    if(strcmp(input,"Colour")==0)
-    {
-      setTheMode(COLOUR);
-      Serial.println("COLOUR");
-    }
-    if(strcmp(input,"Twinkle")==0)
-    {
-      setTheMode(TWINKLE);
-      Serial.println("TWINKLE");
-    }
-    if(strcmp(input,"Rainbow")==0)
-    {
-      setTheMode(RAINBOW);
-      Serial.println("RAINBOW");
-    }
-    if(strcmp(input,"Cycle")==0)
-    {
-      setTheMode(CYCLE);
-      Serial.println("CYCLE");
-    }
-  }
-
   if (strcmp(topic, MQTTcomms)==0)
   {
     if(strcmp(input,"Press")==0)
@@ -612,6 +630,9 @@ void callback(char* topic, byte* payload, unsigned int length)
       setStandby(true);
       Serial.println("OFF");
     }
+  } else if (strcmp(topic, MQTTModeInbox) == 0) {
+    // go to the next mode
+    setTheMode((Modes)((Mode + 1) % ModeCount));
   }
 }
 
