@@ -699,7 +699,7 @@ void setup()
   setTimer(&cycleTimer);
 
   /* Start FastLED */
-  FastLED.addLeds<LPD8806, PixelDataPin, PixelClockPin, RGB>(leds, PixelCount);
+  FastLED.addLeds<LPD8806, PixelDataPin, PixelClockPin, GRB>(leds, PixelCount);
   FastLED.show();
 
   /* Setup MQTT */
