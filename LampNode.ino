@@ -253,30 +253,19 @@ bool timerExpired(unsigned long startTime, unsigned long expiryTime)
     return false;
 }
 
-void setColour(int r, int g, int b)
-{
+void setColour(int r, int g, int b) {
   current_colour[0] = r;
   current_colour[1] = g;
   current_colour[2] = b;
   if(!standby)
-    applyColour(current_colour[0],current_colour[1],current_colour[2]);
+    applyColour(current_colour[0], current_colour[1], current_colour[2]);
 }
 
-void setColourTransition(void)
-{
-  for(int addr=0; addr<50; addr++)  // for each element in the array
-  {
-    for (int i=0; i<3; i++)  // for each colour in turn
-    {
+void setColourTransition(void) {
+  for (int addr = 0; addr < 50; addr++) { // for each element in the array
+    for (int i = 0; i < 3; i++) { // for each colour in turn
       transition[addr][i] = map(addr, 0, 49, current_colour[i], target_colour[i]); // compute the proportional colour value
     }
-    /*
-    Serial.print(transition[addr][0]);
-    Serial.print(",");
-    Serial.print(transition[addr][1]);
-    Serial.print(",");
-    Serial.println(transition[addr][2]);
-    */
   }
 }
 
@@ -658,16 +647,18 @@ void callback(char* topic, byte* payload, unsigned int length)
     // update looks like {"blue":65}
     unsigned int tempColor;
     char * command = strtok(input, "{\":");
+    Serial.print("COLOR: ");
     Serial.print(command);
     if (command != NULL) {
       tempColor = atoi(strtok(NULL, "{\":"));
-      Serial.print(tempColor);
+      Serial.print(", VALUE: ");
+      Serial.println(tempColor);
     }
-    if (command == "red") {
+    if (strcmp(command, "red") == 0) {
       setColourTarget(tempColor, target_colour[1], target_colour[2]);
-    } else if (command == "green") {
+    } else if (strcmp(command, "green") == 0) {
       setColourTarget(target_colour[0], tempColor, target_colour[2]);
-    } else if (command == "blue") {
+    } else if (strcmp(command, "blue") == 0) {
       setColourTarget(target_colour[0], target_colour[1], tempColor);
     }
     /* setColourTarget(temp[0],temp[1],temp[2]); */
