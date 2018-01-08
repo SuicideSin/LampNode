@@ -423,10 +423,7 @@ void twinkle()
 }
 
 void applyBrightness(uint8_t value) {
-  for (uint8_t i = 0; i < PixelCount; i++) {
-    leds[i].maximizeBrightness();
-    leds[i] %= value;
-  }
+  FastLED.setBrightness(value);
 }
 
 void set_brightness(void)
@@ -455,8 +452,7 @@ void set_brightness(void)
     else
       coefficient-=0.025;
 
-    if (Mode == COLOUR)
-    {
+    if (Mode == COLOUR) {
       FastLED.show();
     }
   }
@@ -668,18 +664,15 @@ void callback(char* topic, byte* payload, unsigned int length)
     }
     /* setColourTarget(temp[0],temp[1],temp[2]); */
   } else if (strcmp(topic, MQTTBrightnessInbox) == 0) {
-    /*
-    int brightness_temp = atoi(input);
-    brightness_temp*=MAX_BRIGHTNESS; // multiply by range
-    brightness_temp/=100;  // divide by 100
-    Serial.print("Brightness: ");
-    Serial.print(brightness_temp);
-    if (brightness_temp >= 0 || brightness_temp < 256)
-      brightness = brightness_temp;
-      */
-
-    //if(Mode==COLOUR)
-    //  applyColour(target_colour[0],target_colour[1],target_colour[2]);
+    char * command = strtok(input, "{\":");
+    if (command != NULL) {
+      int brightness_temp = atoi(strtok(NULL, "{\":"));
+      Serial.print("New Brightness: ");
+      Serial.print(brightness_temp);
+      if (brightness_temp >= 0 || brightness_temp < 256) {
+        brightness = brightness_temp;
+      }
+    }
   }
 }
 
@@ -729,12 +722,12 @@ void loop()
 
   if (!standby)
   {
-    /* Periodically update the brightness */
-    /* if(timerExpired(brightnessTimer, BRIGHTNESS_UPDATE_TIMEOUT)) */
-    /* { */
-    /*   setTimer(&brightnessTimer); // reset timer */
-    /*   set_brightness(); */
-    /* } */
+    // Periodically update the brightness
+    if(timerExpired(brightnessTimer, BRIGHTNESS_UPDATE_TIMEOUT))
+    {
+      setTimer(&brightnessTimer); // reset timer
+      set_brightness();
+    }
 
     switch (Mode)
     {
