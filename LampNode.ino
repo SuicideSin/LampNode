@@ -62,7 +62,7 @@ const char* MQTTDeviceInfo =
             "\"false\": \"Off\""
           "},"
           "\"values\": {"
-            "\"value\": true"
+            "\"value\": %s"
           "}"
         "},"
         "\"Mode\": {"
@@ -79,7 +79,7 @@ const char* MQTTDeviceInfo =
           "\"title\": \"Selected Mode\","
           "\"card-type\": \"crouton-simple-text\","
           "\"values\": {"
-            "\"value\": \"None\""
+            "\"value\": \"%s\""
           "}"
         "},"
         "\"Color\": {"
@@ -87,9 +87,9 @@ const char* MQTTDeviceInfo =
           "\"min\": 0,"
           "\"max\": 255,"
           "\"values\": {"
-            "\"red\": 0,"
-            "\"green\": 0,"
-            "\"blue\": 0"
+            "\"red\": %u,"
+            "\"green\": %u,"
+            "\"blue\": %u"
           "}"
         "},"
         "\"Brightness\": {"
@@ -98,7 +98,7 @@ const char* MQTTDeviceInfo =
           "\"min\": 0,"
           "\"max\": 255,"
           "\"values\": {"
-            "\"value\": 3"
+            "\"value\": %u"
           "}"
         "}"
       "},"
@@ -144,6 +144,7 @@ unsigned int pulse[30][3];
 
 enum Modes {COLOUR, TWINKLE, RAINBOW, CYCLE};   // various modes of operation
 const uint8_t ModeCount = 4;
+const char* ModeStrings[ModeCount] = {"Color", "Twinkle", "Rainbow", "Cycle"};
 bool standby = false;
 
 enum Modes Mode = COLOUR;
@@ -151,6 +152,21 @@ enum Modes Mode = COLOUR;
 CRGB leds[PixelCount];
 
 CRGB genericColour(0,255,0);
+
+
+void sendCurrentDeviceState() {
+  char deviceInfo[1024];
+  // power, mode, rgb, brightness
+  sprintf(deviceInfo, MQTTDeviceInfo,
+    standby ? "false" : "true",
+    ModeStrings[Mode],
+    current_colour[0],
+    current_colour[1],
+    current_colour[2],
+    brightness
+  );
+  client.publish(MQTTDeviceInfoOutbox, deviceInfo);
+}
 
 void reconnect() {
   // Loop until we're reconnected
@@ -162,7 +178,7 @@ void reconnect() {
     {
       Serial.println("Connected");
       // Once connected, publish device info
-      client.publish(MQTTDeviceInfoOutbox, MQTTDeviceInfo);
+      sendCurrentDeviceState();
       // And subscribe to topics
       client.subscribe(MQTTDeviceInfoInbox);
       client.subscribe(MQTTPowerInbox);
@@ -349,39 +365,33 @@ bool coinFlip(void)
     return false;
 }
 
-void setTheMode(Modes temp)
-{
+void setTheMode(Modes temp) {
   Serial.print("mode set to: ");
   Serial.println(temp);
-  switch(temp)
-  {
+
+  switch(temp) {
     case COLOUR:
-      client.publish(MQTTModeOutbox, "{\"value\":\"Color\"}");
       if(!standby)
         setColourTarget(target_colour[0],target_colour[1],target_colour[2]);
     break;
 
     case TWINKLE:
-      client.publish(MQTTModeOutbox, "{\"value\":\"Twinkle\"}");
-      setColour(0,0,0);
-    break;
-
     case RAINBOW:
-      client.publish(MQTTModeOutbox, "{\"value\":\"Rainbow\"}");
-      setColour(0,0,0);
-    break;
-
     case CYCLE:
-      client.publish(MQTTModeOutbox, "{\"value\":\"Cycle\"}");
       setColour(0,0,0);
     break;
 
     default:
-      // should never get here
+      Serial.print("UNKNOWN MODE: ");
+      Serial.println(temp);
     break;
   }
 
   Mode = temp;
+
+  char modeUpdate[20];
+  sprintf(modeUpdate, "{\"value\":\"%s\"}", ModeStrings[Mode]);
+  client.publish(MQTTModeOutbox, modeUpdate);
 }
 
 void setStandby(bool state) {
@@ -632,7 +642,7 @@ void callback(char* topic, byte* payload, unsigned int length)
   */
   if (strcmp(topic, MQTTDeviceInfoInbox) == 0) {
     Serial.println("Broadcasting device info");
-    client.publish(MQTTDeviceInfoOutbox, MQTTDeviceInfo);
+    sendCurrentDeviceState();
   } else if (strcmp(topic, MQTTPowerInbox) == 0) {
     if (strstr(input,"true") != NULL) {
       setStandby(false);
