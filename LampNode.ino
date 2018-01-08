@@ -21,8 +21,6 @@
 
 #define DEVICE_INFO \
 
-#define MAX_BRIGHTNESS 153 // ~60%
-
 /* Physical connections */
 #define BUTTON        3         // button on GPIO3 (tx)
 
@@ -671,6 +669,8 @@ void callback(char* topic, byte* payload, unsigned int length)
       Serial.print(brightness_temp);
       if (brightness_temp >= 0 || brightness_temp < 256) {
         brightness = brightness_temp;
+        sprintf(command, "{\"value\":%u}", brightness);
+        client.publish(MQTTBrightnessOutbox, command);
       }
     }
   }
