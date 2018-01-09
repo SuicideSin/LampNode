@@ -22,16 +22,17 @@
 #define DEVICE_INFO \
 
 /* Physical connections */
-#define BUTTON        3         // button on GPIO3 (tx)
+#define BUTTON                    3     // button on GPIO3 (tx)
+#define BUTTON_ON_OFF_TIMEOUT     2000
 
 /* Timers */
-#define INPUT_READ_TIMEOUT     50   // check for button pressed every 50ms
-#define LED_UPDATE_TIMEOUT     20   // update led every 20ms
-#define RAINBOW_UPDATE_TIMEOUT 30
-#define CYCLE_UPDATE_TIMEOUT   40
-#define TWINKLE_UPDATE_TIMEOUT 50
+#define INPUT_READ_TIMEOUT        50    // check for button pressed every 50ms
+#define LED_UPDATE_TIMEOUT        20    // update led every 20ms
+#define RAINBOW_UPDATE_TIMEOUT    30
+#define CYCLE_UPDATE_TIMEOUT      40
+#define TWINKLE_UPDATE_TIMEOUT    50
 #define BRIGHTNESS_UPDATE_TIMEOUT 50
-#define TEMPERATURE_READ_TIMEOUT 2000
+
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -116,9 +117,9 @@ unsigned long runTime         = 0,
               readTempTimer   = 0,
               readInputTimer  = 0;
 
-long buttonTime = 0;
-long lastPushed = 0; // stores the time when button was last depressed
-long lastCheck = 0;  // stores the time when last checked for a button press
+unsigned long buttonDownTime = 0;
+unsigned long buttonUpTime = 0;
+unsigned long buttonPressLength = 0;
 
 // Flags
 bool button_pressed = false; // true if a button press has been registered
@@ -383,6 +384,10 @@ void setTheMode(Modes temp) {
   client.publish(MQTTModeOutbox, modeUpdate);
 }
 
+void nextMode() {
+  setTheMode((Modes)((Mode + 1) % ModeCount));
+}
+
 void setStandby(bool state) {
   if (state) {
     applyColour(0,0,0);
@@ -507,128 +512,6 @@ void callback(char* topic, byte* payload, unsigned int length)
 
   Serial.println(input);
 
-  /*
-  if (strcmp(topic, MQTTcolour)==0)
-  {
-    // ----- Split message by separator character and store rgb values ----
-    char * command;
-    int index = 0;
-    int temp[3];
-    Serial.print("rgb(");
-
-    if (input[0] == '#')  // we have received a hex code of format #FFFFFF
-    {
-      memmove(input, input+1, strlen(input)); // chop the first character off of the string (removes the #)
-      unsigned long rgb = strtoul (input, NULL, 16);  // convert string to actual hex value
-
-      temp[0] = rgb >> 16;
-      temp[1] = (rgb & 0x00ff00) >> 8;
-      temp[2] = (rgb & 0x0000ff);
-
-      Serial.print(temp[0]);
-      Serial.print(", ");
-      Serial.print(temp[1]);
-      Serial.print(", ");
-      Serial.print(temp[2]);
-    }
-    else  // we have received an rgb val of format rgb(255,255,255)
-    {
-      command = strtok (input," (,)");  // this is the first part of the string (rgb) - ignore this
-      while (index<3)
-      {
-        command = strtok (NULL, " (,)");
-        temp[index] = atoi(command);
-        Serial.print(temp[index]);
-        Serial.print(", ");
-        index++;
-      }
-    }
-    Serial.println(")");
-    setColourTarget(temp[0],temp[1],temp[2]);
-  }
-  if (strcmp(topic, MQTTcomms)==0)
-  {
-    if(strcmp(input,"Press")==0)
-    {
-      // perform whatever fun animation you desire on touch
-      pulse_animation = true;
-      pulse_addr = 0;
-      generatePulse();
-      Serial.println("Press");
-    }
-    if(strcmp(input,"Release")==0)
-    {
-      // perform whatever fun animation you desire on touch
-      pulse_animation = false;
-      setColourTarget(target_colour[0],target_colour[1],target_colour[2]);
-      Serial.println("Release");
-    }
-  }
-  if (strcmp(topic, MQTTannouncements)==0)
-  {
-    if(strcmp(input,"Update")==0)
-    {
-      Serial.println("Broadcasting parameters");
-
-      char brightness_str[4];
-      itoa(((brightness*100)/(MAX_BRIGHTNESS+1))+1, brightness_str, 10);
-      client.publish(MQTTbrightness, brightness_str);
-
-      switch (Mode)
-      {
-        case COLOUR:
-          client.publish(MQTTmode, "Colour");
-        break;
-
-        case TWINKLE:
-          client.publish(MQTTmode, "Twinkle");
-        break;
-
-        case RAINBOW:
-          client.publish(MQTTmode, "Rainbow");
-        break;
-
-        case CYCLE:
-          client.publish(MQTTmode, "Cycle");
-        break;
-
-        default:
-          // should never get here
-        break;
-      }
-
-      char hexR[3], hexG[3], hexB[3], hex[8];
-
-      sprintf(hexR, "%02X", target_colour[0]);
-      sprintf(hexG, "%02X", target_colour[1]);
-      sprintf(hexB, "%02X", target_colour[2]);
-      strcpy(hex, "#");
-      strcat(hex, hexR);
-      strcat(hex, hexG);
-      strcat(hex, hexB);
-
-      client.publish(MQTTcolour, hex);
-
-      if (standby)
-        client.publish(MQTTPowerOutbox, "{\"value\":false}");
-      else
-        client.publish(MQTTPowerOutbox, "{\"value\":true}");
-    }
-  }
-  if (strcmp(topic, MQTTbrightness)==0)
-  {
-    int brightness_temp = atoi(input);
-    brightness_temp*=MAX_BRIGHTNESS; // multiply by range
-    brightness_temp/=100;  // divide by 100
-    Serial.print("Brightness: ");
-    Serial.print(brightness_temp);
-    if (brightness_temp >= 0 || brightness_temp < 256)
-      brightness = brightness_temp;
-
-    //if(Mode==COLOUR)
-    //  applyColour(target_colour[0],target_colour[1],target_colour[2]);
-  }
-  */
   if (strcmp(topic, MQTTDeviceInfoInbox) == 0) {
     Serial.println("Broadcasting device info");
     sendCurrentDeviceState();
@@ -641,8 +524,7 @@ void callback(char* topic, byte* payload, unsigned int length)
       Serial.println("OFF");
     }
   } else if (strcmp(topic, MQTTModeInbox) == 0) {
-    // go to the next mode
-    setTheMode((Modes)((Mode + 1) % ModeCount));
+    nextMode();
   } else if (strcmp(topic, MQTTColorInbox) == 0) {
     // update looks like {"blue":65}
     unsigned int tempColor;
@@ -677,16 +559,22 @@ void callback(char* topic, byte* payload, unsigned int length)
   }
 }
 
+void handleInterrupt() {
+  if (digitalRead(BUTTON) == HIGH) {
+    buttonDownTime = millis();
+  } else {
+    buttonUpTime = millis();
+  }
+}
 
 void setup()
 {
   /* Setup I/O */
-  pinMode(LED_BUILTIN, OUTPUT);     // Initialize the BUILTIN_LED pin as an output
   pinMode(BUTTON, INPUT_PULLUP);  // Enables the internal pull-up resistor
-  digitalWrite(LED_BUILTIN, HIGH);
+  attachInterrupt(digitalPinToInterrupt(BUTTON), handleInterrupt, CHANGE);
 
   /* Setup serial */
-  Serial.begin(115200);
+  Serial.begin(115200, SERIAL_8N1, SERIAL_TX_ONLY);
   Serial.flush();
 
   /* Start timers */
@@ -775,58 +663,21 @@ void loop()
       break;
     }
   }
-  else
-  {
-    // do nothing if off
-    //applyColour(0,0,0);
+
+  if (buttonDownTime > 0 && buttonUpTime == 0 && (now - buttonDownTime) > BUTTON_ON_OFF_TIMEOUT) {
+    Serial.print("Set Standby: ");
+    Serial.println(!standby);
+    setStandby(!standby); // change the standby state
+    buttonDownTime = 0;
   }
-  return;
-
-  /* Periodically read the inputs */
-  if (timerExpired(readInputTimer, INPUT_READ_TIMEOUT)) // check for button press periodically
-  {
-    setTimer(&readInputTimer);  // reset timer
-
-    readInputs();
-
-    if (button_pressed)
-    {
-      //start conting
-      lastPushed = now; // start the timer
-      Serial.println("Button pushed... ");
-      button_pressed = false;
+  if (buttonDownTime == 0 && buttonUpTime > 0) {
+    // release after shutdown
+    buttonUpTime = 0;
+  }
+  if (buttonDownTime > 0 && buttonUpTime > 0) {
+    if (!standby) {
+      nextMode();
     }
-
-    if (((now - lastPushed) > 1000) && button_short_press) //check the hold time
-    {
-      Serial.println("Button held...");
-      /*
-      if (!standby)
-        client.publish(MQTTcomms, "Press");
-        */
-      button_short_press = false;
-    }
-
-    if (button_released)
-    {
-      //get the time that button was held in
-      //buttonTime = now - lastPushed;
-
-      if (button_short_press)  // for a short press we turn the device on/off
-      {
-        Serial.println("Button released (short press).");
-        setStandby(!standby);  // change the standby state
-      }
-      else  // for a long press we do the animation thing
-      {
-        Serial.println("Button released (long press).");
-        /*
-        if (!standby)  // lets only do the pulsey animation if the lamp is on in the first place
-          client.publish(MQTTcomms, "Release");
-          */
-      }
-      button_released = false;
-      button_short_press = false;
-    }
+    buttonDownTime = buttonUpTime = 0;
   }
 }
