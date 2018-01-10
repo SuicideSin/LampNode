@@ -26,7 +26,6 @@
 #define BUTTON_ON_OFF_TIMEOUT     2000
 
 /* Timers */
-#define INPUT_READ_TIMEOUT        50    // check for button pressed every 50ms
 #define LED_UPDATE_TIMEOUT        20    // update led every 20ms
 #define RAINBOW_UPDATE_TIMEOUT    30
 #define CYCLE_UPDATE_TIMEOUT      40
@@ -122,17 +121,9 @@ unsigned long buttonUpTime = 0;
 unsigned long buttonPressLength = 0;
 
 // Flags
-bool button_pressed = false; // true if a button press has been registered
-bool button_released = false; // true if a button release has been registered
-bool button_short_press = false;
 bool target_met = false;
 bool pulse_animation = false;
-int pulse_addr = 0;
 int brightness = 155;
-
-bool active = false;
-bool lastActive = false;
-bool overheating = false;
 
 const uint16_t PixelCount    = 16;
 const uint8_t  PixelDataPin  = 0;
@@ -198,24 +189,6 @@ void reconnect() {
   }
 }
 
-void readInputs(void)
-{
-  static bool button_state, last_button_state = false; // Remembers the current and previous button states
-
-  button_state = digitalRead(BUTTON); // read button state (active high)
-
-  if (button_state && !last_button_state) // on a rising edge we register a button press
-  {
-    button_pressed = true;
-    button_short_press = true;  // initially assume its gonna be a short press
-  }
-
-  if (!button_state && last_button_state) // on a falling edge we register a button press
-    button_released = true;
-
-  last_button_state = button_state;
-}
-
 void applyColour(uint8_t r, uint8_t g, uint8_t b)
 {
   if (r < 256 && g < 256 && b < 256)
@@ -279,24 +252,6 @@ void setColourTarget(int r, int g, int b)
   target_colour[2] = b;
 
   setColourTransition();
-}
-
-void generatePulse(void)
-{
-  for(int addr=0; addr<30; addr++)  // for each element in the array
-  {
-    for (int i=0; i<3; i++)  // for each colour in turn
-    {
-      pulse[addr][i] = map(addr, 0, 29, current_colour[i], current_colour[i]/5); // compute the proportional colour value
-    }
-    /*
-    Serial.print(pulse[addr][0]);
-    Serial.print(",");
-    Serial.print(pulse[addr][1]);
-    Serial.print(",");
-    Serial.println(pulse[addr][2]);
-    */
-  }
 }
 
 // Input a value 0 to 255 to get a color value.
